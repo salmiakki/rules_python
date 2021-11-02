@@ -81,6 +81,7 @@ def generate_build_file_contents(
     pip_data_exclude: List[str],
     tags: List[str],
     additional_targets: List[str] = [],
+    compatible_with: str = '',
 ) -> str:
     """Generate a BUILD file for an unzipped Wheel
 
@@ -91,6 +92,7 @@ def generate_build_file_contents(
         pip_data_exclude: more patterns to exclude from the data attribute of generated py_library rules.
         tags: list of tags to apply to generated py_library rules.
         additional_targets: A list of additional targets to append to the BUILD file contents.
+        compatible_with: A list of target environment the py_library is compatible with.
 
     Returns:
         A complete BUILD file as a string
@@ -139,6 +141,7 @@ def generate_build_file_contents(
             imports = ["."],
             deps = [{dependencies}],
             tags = [{tags}],
+            compatible_with = [{compatible_with}],
         )
         """.format(
             name=name,
@@ -150,6 +153,7 @@ def generate_build_file_contents(
             data_label=DATA_LABEL,
             dist_info_label=DIST_INFO_LABEL,
             entry_point_prefix=WHEEL_ENTRY_POINT_PREFIX,
+            compatible_with=compatible_with,
         ))] + additional_targets
     )
 
@@ -291,6 +295,7 @@ def extract_wheel(
     enable_implicit_namespace_pkgs: bool,
     incremental: bool = False,
     incremental_repo_prefix: Optional[str] = None,
+    compatible_with: str = "",
 ) -> Optional[str]:
     """Extracts wheel into given directory and creates py_library and filegroup targets.
 
@@ -303,6 +308,7 @@ def extract_wheel(
             effects the names of libraries and their dependencies, which point to other external repositories.
         incremental_repo_prefix: If incremental is true, use this prefix when creating labels from wheel
             names instead of the default.
+        compatible_with: List of target environment the requirements are compatible with
 
     Returns:
         The Bazel label for the extracted wheel, in the form '//path/to/wheel'.
@@ -366,6 +372,7 @@ def extract_wheel(
             pip_data_exclude,
             ["pypi_name=" + whl.name, "pypi_version=" + whl.metadata.version],
             entry_points,
+            compatible_with=compatible_with,
         )
         build_file.write(contents)
 

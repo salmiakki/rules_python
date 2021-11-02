@@ -59,6 +59,12 @@ def main() -> None:
         required=True,
         help="Path to requirements.txt from where to install dependencies",
     )
+    parser.add_argument(
+        "--compatible_with",
+        action="store",
+        required=False,
+        help="List targets for which reqirements are compatible with",
+    )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
     deserialized_args = dict(vars(args))
@@ -90,7 +96,8 @@ def main() -> None:
         % (
             repo_label,
             bazel.extract_wheel(
-                whl, extras, deserialized_args["pip_data_exclude"], args.enable_implicit_namespace_pkgs
+                whl, extras, deserialized_args["pip_data_exclude"], args.enable_implicit_namespace_pkgs,
+                compatible_with=args.compatible_with,
             ),
         )
         for whl in glob.glob("*.whl")

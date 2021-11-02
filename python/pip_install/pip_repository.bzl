@@ -98,6 +98,32 @@ package(default_visibility = ["//visibility:public"])
 
 # Ensure the `requirements.bzl` source can be accessed by stardoc, since users load() from it
 exports_files(["requirements.bzl"])
+
+environment(
+    name = "python36",
+    visibility = ["//visibility:public"],
+)
+environment(
+    name = "python37",
+    visibility = ["//visibility:public"],
+)
+environment(
+    name = "python38",
+    visibility = ["//visibility:public"],
+)
+environment(
+    name = "python39",
+    visibility = ["//visibility:public"],
+)
+environment_group(
+  name = "python_versions",
+  defaults = [],
+  environments = [
+    ":python36",
+    ":python37",
+    ":python38",
+    ":python39",
+])
 """
 
 def _pip_repository_impl(rctx):
@@ -136,6 +162,8 @@ def _pip_repository_impl(rctx):
             "python.pip_install.extract_wheels",
             "--requirements",
             rctx.path(rctx.attr.requirements),
+            "--compatible_with",
+            ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with]),
         ]
 
     args += ["--repo", rctx.attr.name]
