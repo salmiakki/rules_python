@@ -1,9 +1,7 @@
 """Dependencies that are needed for rules_python tests and tools."""
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
-load("@rules_python//python/legacy_pip_import:pip.bzl", "pip_import")
 
 def rules_python_internal_deps():
     """Fetches all required dependencies for rules_python tests and tools."""
@@ -34,6 +32,29 @@ def rules_python_internal_deps():
         url = "https://github.com/bazelbuild/stardoc/archive/0.4.0.tar.gz",
         sha256 = "6d07d18c15abb0f6d393adbd6075cd661a2219faab56a9517741f0fc755f6f3c",
         strip_prefix = "stardoc-0.4.0",
+    )
+
+    maybe(
+        http_archive,
+        name = "io_bazel_rules_go",
+        sha256 = "f2dcd210c7095febe54b804bb1cd3a58fe8435a909db2ec04e31542631cf715c",
+        urls = [
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.31.0/rules_go-v0.31.0.zip",
+            "https://github.com/bazelbuild/rules_go/releases/download/v0.31.0/rules_go-v0.31.0.zip",
+        ],
+    )
+
+    maybe(
+        http_archive,
+        name = "bazel_gazelle",
+        patch_args = ["-p1"],
+        patches = ["@rules_python//gazelle:bazel_gazelle.pr1095.patch"],
+        sha256 = "0bb8056ab9ed4cbcab5b74348d8530c0e0b939987b0cfe36c1ab53d35a99e4de",
+        strip_prefix = "bazel-gazelle-2834ea44b3ec6371c924baaf28704730ec9d4559",
+        urls = [
+            # No release since March, and we need subsequent fixes
+            "https://github.com/bazelbuild/bazel-gazelle/archive/2834ea44b3ec6371c924baaf28704730ec9d4559.zip",
+        ],
     )
 
     # Test data for WHL tool testing.
@@ -95,21 +116,6 @@ def rules_python_internal_deps():
             "https://mirror.bazel.build/pypi.python.org/packages/e6/35/f187bdf23be87092bd0f1200d43d23076cee4d0dec109f195173fd3ebc79/mock-2.0.0-py2.py3-none-any.whl",
             "https://pypi.python.org/packages/e6/35/f187bdf23be87092bd0f1200d43d23076cee4d0dec109f195173fd3ebc79/mock-2.0.0-py2.py3-none-any.whl",
         ],
-    )
-
-    maybe(
-        git_repository,
-        name = "subpar",
-        remote = "https://github.com/google/subpar",
-        # tag = "2.0.0",
-        commit = "35bb9f0092f71ea56b742a520602da9b3638a24f",
-        shallow_since = "1557863961 -0400",
-    )
-
-    maybe(
-        pip_import,
-        name = "piptool_deps",
-        requirements = "@rules_python//python:requirements.txt",
     )
 
     maybe(

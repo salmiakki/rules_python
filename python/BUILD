@@ -24,7 +24,7 @@ In an ideal renaming, we'd move the packaging rules to a different package so
 that @rules_python//python is only concerned with the core rules.
 """
 
-load("//python/pip_install:requirements.bzl", "compile_pip_requirements")
+load(":defs.bzl", "current_py_toolchain")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,7 +34,6 @@ filegroup(
     name = "distribution",
     srcs = glob(["**"]) + [
         "//python/constraints:distribution",
-        "//python/legacy_pip_import:distribution",
         "//python/runfiles:distribution",
         "//python/private:distribution",
     ],
@@ -49,10 +48,12 @@ filegroup(
         "defs.bzl",
         "packaging.bzl",
         "pip.bzl",
-        "whl.bzl",
+        "repositories.bzl",
+        "versions.bzl",
+        "//python/pip_install:bzl",
         "//python/private:bzl",
     ],
-    visibility = ["//:__pkg__"],
+    visibility = ["//visibility:public"],
 )
 
 # ========= Core rules =========
@@ -138,10 +139,8 @@ alias(
 exports_files([
     "packaging.bzl",
     "pip.bzl",
-    "whl.bzl",
 ])
 
-compile_pip_requirements(
-    name = "requirements",
-    extra_args = ["--allow-unsafe"],
+current_py_toolchain(
+    name = "current_py_toolchain",
 )

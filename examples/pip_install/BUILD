@@ -52,6 +52,7 @@ py_test(
 
 # For pip dependencies which have entry points, the `entry_point` macro can be
 # used from the generated `pip_install` repository to access a runnable binary.
+
 alias(
     name = "yamllint",
     actual = entry_point("yamllint"),
@@ -61,6 +62,7 @@ alias(
 compile_pip_requirements(
     name = "requirements",
     extra_args = ["--allow-unsafe"],
+    requirements_windows = ":requirements_windows.txt",
 )
 
 # Test the use of all pip_install utilities in a single py_test
@@ -75,8 +77,9 @@ py_test(
     env = {
         "WHEEL_DATA_CONTENTS": "$(rootpaths {})".format(data_requirement("s3cmd")),
         "WHEEL_DIST_INFO_CONTENTS": "$(rootpaths {})".format(dist_info_requirement("boto3")),
-        "WHEEL_ENTRY_POINT": "$(rootpath :yamllint)",
+        "YAMLLINT_ENTRY_POINT": "$(rootpath :yamllint)",
     },
+    deps = ["@rules_python//python/runfiles"],
 )
 
 # Assert that tags are present on resulting py_library,

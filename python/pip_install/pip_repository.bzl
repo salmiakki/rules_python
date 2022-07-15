@@ -1,6 +1,12 @@
 ""
 
+load("//python:repositories.bzl", "STANDALONE_INTERPRETER_FILENAME")
 load("//python/pip_install:repositories.bzl", "all_requirements")
+load("//python/pip_install/private:srcs.bzl", "PIP_INSTALL_PY_SRCS")
+
+CPPFLAGS = "CPPFLAGS"
+
+COMMAND_LINE_TOOLS_PATH_SLUG = "commandlinetools"
 
 def _construct_pypath(rctx):
     """Helper function to construct a PYTHONPATH.
@@ -24,6 +30,23 @@ def _construct_pypath(rctx):
     pypath = separator.join([str(p) for p in [rules_root] + thirdparty_roots])
     return pypath
 
+def _get_python_interpreter_attr(rctx):
+    """A helper function for getting the `python_interpreter` attribute or it's default
+
+    Args:
+        rctx (repository_ctx): Handle to the rule repository context.
+
+    Returns:
+        str: The attribute value or it's default
+    """
+    if rctx.attr.python_interpreter:
+        return rctx.attr.python_interpreter
+
+    if "win" in rctx.os.name:
+        return "python.exe"
+    else:
+        return "python3"
+
 def _resolve_python_interpreter(rctx):
     """Helper function to find the python interpreter from the common attributes
 
@@ -31,7 +54,8 @@ def _resolve_python_interpreter(rctx):
         rctx: Handle to the rule repository context.
     Returns: Python interpreter path.
     """
-    python_interpreter = rctx.attr.python_interpreter
+    python_interpreter = _get_python_interpreter_attr(rctx)
+
     if rctx.attr.python_interpreter_target != None:
         target = rctx.attr.python_interpreter_target
         python_interpreter = rctx.path(target)
@@ -39,8 +63,38 @@ def _resolve_python_interpreter(rctx):
         if "/" not in python_interpreter:
             python_interpreter = rctx.which(python_interpreter)
         if not python_interpreter:
-            fail("python interpreter not found")
+            fail("python interpreter `{}` not found in PATH".format(python_interpreter))
     return python_interpreter
+
+def _maybe_set_xcode_location_cflags(rctx, environment):
+    """Patch environment with CPPFLAGS of xcode sdk location.
+
+    Figure out if this interpreter target comes from rules_python, and patch the xcode sdk location if so.
+    Pip won't be able to compile c extensions from sdists with the pre built python distributions from indygreg
+    otherwise. See https://github.com/indygreg/python-build-standalone/issues/103
+    """
+    if (
+        rctx.os.name.lower().startswith("mac os") and
+        rctx.attr.python_interpreter_target != None and
+        # This is a rules_python provided toolchain.
+        rctx.execute([
+            "ls",
+            "{}/{}".format(
+                rctx.path(Label("@{}//:WORKSPACE".format(rctx.attr.python_interpreter_target.workspace_name))).dirname,
+                STANDALONE_INTERPRETER_FILENAME,
+            ),
+        ]).return_code == 0 and
+        not environment.get(CPPFLAGS)
+    ):
+        xcode_sdk_location = rctx.execute(["xcode-select", "--print-path"])
+        if xcode_sdk_location.return_code == 0:
+            xcode_root = xcode_sdk_location.stdout.strip()
+            if COMMAND_LINE_TOOLS_PATH_SLUG not in xcode_root.lower():
+                # This is a full xcode installation somewhere like /Applications/Xcode13.0.app/Contents/Developer
+                # so we need to change the path to to the macos specific tools which are in a different relative
+                # path than xcode installed command line tools.
+                xcode_root = "{}/Platforms/MacOSX.platform/Developer".format(xcode_root)
+            environment[CPPFLAGS] = "-isysroot {}/SDKs/MacOSX.sdk".format(xcode_root)
 
 def _parse_optional_attrs(rctx, args):
     """Helper function to parse common attributes of pip_repository and whl_library repository rules.
@@ -93,6 +147,17 @@ def _parse_optional_attrs(rctx, args):
 
     return args
 
+def _create_repository_execution_environment(rctx):
+    """Create a environment dictionary for processes we spawn with rctx.execute.
+
+    Args:
+        rctx: The repository context.
+    Returns: Dictionary of envrionment variable suitable to pass to rctx.execute.
+    """
+    env = {"PYTHONPATH": _construct_pypath(rctx)}
+    _maybe_set_xcode_location_cflags(rctx, env)
+    return env
+
 _BUILD_FILE_CONTENTS = """\
 package(default_visibility = ["//visibility:public"])
 
@@ -100,59 +165,85 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["requirements.bzl"])
 """
 
+def _locked_requirements(rctx):
+    os = rctx.os.name.lower()
+    requirements_txt = rctx.attr.requirements_lock
+    if os.startswith("mac os") and rctx.attr.requirements_darwin != None:
+        requirements_txt = rctx.attr.requirements_darwin
+    elif os.startswith("linux") and rctx.attr.requirements_linux != None:
+        requirements_txt = rctx.attr.requirements_linux
+    elif "win" in os and rctx.attr.requirements_windows != None:
+        requirements_txt = rctx.attr.requirements_windows
+    if not requirements_txt:
+        fail("""\
+Incremental mode requires a requirements_lock attribute be specified,
+or a platform-specific lockfile using one of the requirements_* attributes.
+""")
+    return requirements_txt
+
 def _pip_repository_impl(rctx):
     python_interpreter = _resolve_python_interpreter(rctx)
 
-    if rctx.attr.incremental and not rctx.attr.requirements_lock:
-        fail("Incremental mode requires a requirements_lock attribute be specified.")
-
-    # We need a BUILD file to load the generated requirements.bzl
-    rctx.file("BUILD.bazel", _BUILD_FILE_CONTENTS)
-
-    pypath = _construct_pypath(rctx)
+    # Write the annotations file to pass to the wheel maker
+    annotations = {package: json.decode(data) for (package, data) in rctx.attr.annotations.items()}
+    annotations_file = rctx.path("annotations.json")
+    rctx.file(annotations_file, json.encode_indent(annotations, indent = " " * 4))
 
     if rctx.attr.incremental:
+        requirements_txt = _locked_requirements(rctx)
         args = [
             python_interpreter,
             "-m",
-            "python.pip_install.parse_requirements_to_bzl",
+            "python.pip_install.extract_wheels.parse_requirements_to_bzl",
             "--requirements_lock",
-            rctx.path(rctx.attr.requirements_lock),
+            rctx.path(requirements_txt),
+            "--requirements_lock_label",
+            str(requirements_txt),
             # pass quiet and timeout args through to child repos.
             "--quiet",
             str(rctx.attr.quiet),
             "--timeout",
             str(rctx.attr.timeout),
+            "--annotations",
+            annotations_file,
         ]
 
-        if rctx.attr.python_interpreter:
-            args += ["--python_interpreter", rctx.attr.python_interpreter]
+        args += ["--python_interpreter", _get_python_interpreter_attr(rctx)]
         if rctx.attr.python_interpreter_target:
             args += ["--python_interpreter_target", str(rctx.attr.python_interpreter_target)]
+        progress_message = "Parsing requirements to starlark"
     else:
         args = [
             python_interpreter,
             "-m",
-            "python.pip_install.extract_wheels",
+            "python.pip_install.extract_wheels.extract_wheels",
             "--requirements",
             rctx.path(rctx.attr.requirements),
             "--compatible_with",
             ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with]),
+            "--annotations",
+            annotations_file,
         ]
+        progress_message = "Extracting wheels"
 
-    args += ["--repo", rctx.attr.name]
+    args += ["--repo", rctx.attr.name, "--repo-prefix", rctx.attr.repo_prefix]
     args = _parse_optional_attrs(rctx, args)
+
+    rctx.report_progress(progress_message)
 
     result = rctx.execute(
         args,
         # Manually construct the PYTHONPATH since we cannot use the toolchain here
-        environment = {"PYTHONPATH": _construct_pypath(rctx)},
+        environment = _create_repository_execution_environment(rctx),
         timeout = rctx.attr.timeout,
         quiet = rctx.attr.quiet,
     )
 
     if result.return_code:
         fail("rules_python failed: %s (%s)" % (result.stdout, result.stderr))
+
+    # We need a BUILD file to load the generated requirements.bzl
+    rctx.file("BUILD.bazel", _BUILD_FILE_CONTENTS + "\n# The requirements.bzl file was generated by running:\n# " + " ".join([str(a) for a in args]))
 
     return
 
@@ -195,7 +286,15 @@ to control this flag.
     "pip_data_exclude": attr.string_list(
         doc = "Additional data exclusion parameters to add to the pip packages BUILD file.",
     ),
-    "python_interpreter": attr.string(default = "python3"),
+    "python_interpreter": attr.string(
+        doc = """\
+The python interpreter to use. This can either be an absolute path or the name
+of a binary found on the host's `PATH` environment variable. If no value is set
+`python3` is defaulted for Unix systems and `python.exe` for Windows.
+""",
+        # NOTE: This attribute should not have a default. See `_get_python_interpreter_attr`
+        # default = "python3"
+    ),
     "python_interpreter_target": attr.label(
         allow_single_file = True,
         doc = """
@@ -209,14 +308,34 @@ python_interpreter.
         default = True,
         doc = "If True, suppress printing stdout and stderr output to the terminal.",
     ),
+    "repo_prefix": attr.string(
+        doc = """
+Prefix for the generated packages. For non-incremental mode the
+packages will be of the form
+
+@<name>//<prefix><sanitized-package-name>/...
+
+For incremental mode the packages will be of the form
+
+@<prefix><sanitized-package-name>//...
+""",
+    ),
     # 600 is documented as default here: https://docs.bazel.build/versions/master/skylark/lib/repository_ctx.html#execute
     "timeout": attr.int(
         default = 600,
         doc = "Timeout (in seconds) on the rule's execution duration.",
     ),
+    "_py_srcs": attr.label_list(
+        doc = "Python sources used in the repository rule",
+        allow_files = True,
+        default = PIP_INSTALL_PY_SRCS,
+    ),
 }
 
 pip_repository_attrs = {
+    "annotations": attr.string_dict(
+        doc = "Optional annotations to apply to packages",
+    ),
     "incremental": attr.bool(
         default = False,
         doc = "Create the repository in incremental mode.",
@@ -225,6 +344,14 @@ pip_repository_attrs = {
         allow_single_file = True,
         doc = "A 'requirements.txt' pip requirements file.",
     ),
+    "requirements_darwin": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Mac OS",
+    ),
+    "requirements_linux": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Linux",
+    ),
     "requirements_lock": attr.label(
         allow_single_file = True,
         doc = """
@@ -232,6 +359,10 @@ A fully resolved 'requirements.txt' pip requirement file containing the transiti
 of 'requirements' no resolve will take place and pip_repository will create individual repositories for each of your dependencies so that
 wheels are fetched/built only for the targets specified by 'build/run/test'.
 """,
+    ),
+    "requirements_windows": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Windows",
     ),
 }
 
@@ -282,26 +413,32 @@ py_binary(
     environ = common_env,
 )
 
-def _impl_whl_library(rctx):
+def _whl_library_impl(rctx):
     python_interpreter = _resolve_python_interpreter(rctx)
 
-    # pointer to parent repo so these rules rerun if the definitions in requirements.bzl change.
-    _parent_repo_label = Label("@{parent}//:requirements.bzl".format(parent = rctx.attr.repo))
     args = [
         python_interpreter,
         "-m",
-        "python.pip_install.parse_requirements_to_bzl.extract_single_wheel",
+        "python.pip_install.extract_wheels.extract_single_wheel",
         "--requirement",
         rctx.attr.requirement,
         "--repo",
         rctx.attr.repo,
+        "--repo-prefix",
+        rctx.attr.repo_prefix,
     ]
+    if rctx.attr.annotation:
+        args.extend([
+            "--annotation",
+            rctx.path(rctx.attr.annotation),
+        ])
+
     args = _parse_optional_attrs(rctx, args)
 
     result = rctx.execute(
         args,
         # Manually construct the PYTHONPATH since we cannot use the toolchain here
-        environment = {"PYTHONPATH": _construct_pypath(rctx)},
+        environment = _create_repository_execution_environment(rctx),
         quiet = rctx.attr.quiet,
         timeout = rctx.attr.timeout,
     )
@@ -312,6 +449,13 @@ def _impl_whl_library(rctx):
     return
 
 whl_library_attrs = {
+    "annotation": attr.label(
+        doc = (
+            "Optional json encoded file containing annotation to apply to the extracted wheel. " +
+            "See `package_annotation`"
+        ),
+        allow_files = True,
+    ),
     "repo": attr.string(
         mandatory = True,
         doc = "Pointer to parent repo name. Used to make these rules rerun if the parent repo changes.",
@@ -329,6 +473,40 @@ whl_library = repository_rule(
     doc = """
 Download and extracts a single wheel based into a bazel repo based on the requirement string passed in.
 Instantiated from pip_repository and inherits config options from there.""",
-    implementation = _impl_whl_library,
+    implementation = _whl_library_impl,
     environ = common_env,
 )
+
+def package_annotation(
+        additive_build_content = None,
+        copy_files = {},
+        copy_executables = {},
+        data = [],
+        data_exclude_glob = [],
+        srcs_exclude_glob = []):
+    """Annotations to apply to the BUILD file content from package generated from a `pip_repository` rule.
+
+    [cf]: https://github.com/bazelbuild/bazel-skylib/blob/main/docs/copy_file_doc.md
+
+    Args:
+        additive_build_content (str, optional): Raw text to add to the generated `BUILD` file of a package.
+        copy_files (dict, optional): A mapping of `src` and `out` files for [@bazel_skylib//rules:copy_file.bzl][cf]
+        copy_executables (dict, optional): A mapping of `src` and `out` files for
+            [@bazel_skylib//rules:copy_file.bzl][cf]. Targets generated here will also be flagged as
+            executable.
+        data (list, optional): A list of labels to add as `data` dependencies to the generated `py_library` target.
+        data_exclude_glob (list, optional): A list of exclude glob patterns to add as `data` to the generated
+            `py_library` target.
+        srcs_exclude_glob (list, optional): A list of labels to add as `srcs` to the generated `py_library` target.
+
+    Returns:
+        str: A json encoded string of the provided content.
+    """
+    return json.encode(struct(
+        additive_build_content = additive_build_content,
+        copy_files = copy_files,
+        copy_executables = copy_executables,
+        data = data,
+        data_exclude_glob = data_exclude_glob,
+        srcs_exclude_glob = srcs_exclude_glob,
+    ))

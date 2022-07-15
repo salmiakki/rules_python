@@ -24,8 +24,8 @@ licenses(["notice"])  # Apache 2.0
 _DOCS = {
     "packaging": "//docs:packaging-docs",
     "pip": "//docs:pip-docs",
+    "pip_repository": "//docs:pip-repository",
     "python": "//docs:core-docs",
-    "whl": "//docs:whl-docs",
 }
 
 # We define these bzl_library targets here rather than in the //python package
@@ -62,9 +62,8 @@ bzl_library(
 bzl_library(
     name = "pip_install_bzl",
     srcs = [
-        "//python/pip_install:pip_repository.bzl",
-        "//python/pip_install:repositories.bzl",
-        "//python/pip_install:requirements.bzl",
+        "//python:bzl",
+        "//python/pip_install:bzl",
     ],
     deps = [
         ":defs",
@@ -79,21 +78,27 @@ bzl_library(
     ],
 )
 
+# TODO: Stardoc does not guarantee consistent outputs accross platforms (Unix/Windows).
+# As a result we do not build or test docs on Windows.
+_NOT_WINDOWS = select({
+    "@platforms//os:linux": [],
+    "@platforms//os:macos": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
 stardoc(
     name = "core-docs",
     out = "python.md_",
     input = "//python:defs.bzl",
+    target_compatible_with = _NOT_WINDOWS,
     deps = [":defs"],
 )
-
-# TODO: Consider merging documentation pages for whl and pip. This would
-# require re-exporting their symbols from a common .bzl; see
-# https://github.com/bazelbuild/skydoc/issues/208.
 
 stardoc(
     name = "pip-docs",
     out = "pip.md_",
     input = "//python:pip.bzl",
+    target_compatible_with = _NOT_WINDOWS,
     deps = [
         ":bazel_repo_tools",
         ":pip_install_bzl",
@@ -102,15 +107,22 @@ stardoc(
 )
 
 stardoc(
-    name = "whl-docs",
-    out = "whl.md_",
-    input = "//python:whl.bzl",
+    name = "pip-repository",
+    out = "pip_repository.md_",
+    input = "//python/pip_install:pip_repository.bzl",
+    target_compatible_with = _NOT_WINDOWS,
+    deps = [
+        ":bazel_repo_tools",
+        ":pip_install_bzl",
+        "//third_party/github.com/bazelbuild/bazel-skylib/lib:versions",
+    ],
 )
 
 stardoc(
     name = "packaging-docs",
     out = "packaging.md_",
     input = "//python:packaging.bzl",
+    target_compatible_with = _NOT_WINDOWS,
     deps = [":packaging_bzl"],
 )
 
@@ -120,6 +132,7 @@ stardoc(
         failure_message = "Please run:   bazel run //docs:update",
         file1 = k + ".md",
         file2 = k + ".md_",
+        target_compatible_with = _NOT_WINDOWS,
     )
     for k in _DOCS.keys()
 ]
@@ -134,10 +147,12 @@ write_file(
         "cp -fv bazel-bin/docs/{0}.md_ docs/{0}.md".format(k)
         for k in _DOCS.keys()
     ],
+    target_compatible_with = _NOT_WINDOWS,
 )
 
 sh_binary(
     name = "update",
     srcs = ["update.sh"],
     data = _DOCS.values(),
+    target_compatible_with = _NOT_WINDOWS,
 )

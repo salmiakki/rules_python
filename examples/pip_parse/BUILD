@@ -1,9 +1,8 @@
 load(
-    "@pip_parsed_deps//:requirements.bzl",
+    "@pypi//:requirements.bzl",
     "data_requirement",
     "dist_info_requirement",
     "entry_point",
-    "requirement",
 )
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
@@ -38,7 +37,7 @@ py_binary(
     name = "main",
     srcs = ["main.py"],
     deps = [
-        requirement("requests"),
+        "@pypi_requests//:pkg",
     ],
 )
 
@@ -50,21 +49,17 @@ py_test(
 
 # For pip dependencies which have entry points, the `entry_point` macro can be
 # used from the generated `pip_parse` repository to access a runnable binary.
+
 alias(
     name = "yamllint",
-    # If `pkg` and `script` are the same, passing a single string to
-    # `entry_point` would work as well: `entry_point("yamllint")`
-    actual = entry_point(
-        pkg = "yamllint",
-        script = "yamllint",
-    ),
+    actual = entry_point("yamllint"),
 )
 
 # This rule adds a convenient way to update the requirements file.
 compile_pip_requirements(
     name = "requirements",
     extra_args = ["--allow-unsafe"],
-    requirements_in = "requirements.txt",
+    requirements_in = "requirements.in",
     requirements_txt = "requirements_lock.txt",
 )
 
@@ -80,6 +75,7 @@ py_test(
     env = {
         "WHEEL_DATA_CONTENTS": "$(rootpaths {})".format(data_requirement("s3cmd")),
         "WHEEL_DIST_INFO_CONTENTS": "$(rootpaths {})".format(dist_info_requirement("requests")),
-        "WHEEL_ENTRY_POINT": "$(rootpath :yamllint)",
+        "YAMLLINT_ENTRY_POINT": "$(rootpath :yamllint)",
     },
+    deps = ["@rules_python//python/runfiles"],
 )

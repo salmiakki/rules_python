@@ -11,16 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""The version of rules_python."""
-
-version = "0.5.0"
+"""Versions of rules_python dependencies."""
 
 # Currently used Bazel version. This version is what the rules here are tested
 # against.
-# This version should be updated together with the version of the Bazel
+# This version should be updated together with the version of Bazel
 # in .bazelversion.
 # TODO(alexeagle): assert this is the case in a test
-BAZEL_VERSION = "4.0.0"
+BAZEL_VERSION = "5.2.0"
 
 # Versions of Bazel which users should be able to use.
 # Ensures we don't break backwards-compatibility,
