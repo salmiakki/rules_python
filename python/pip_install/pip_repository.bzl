@@ -206,6 +206,8 @@ def _pip_repository_impl(rctx):
             str(rctx.attr.timeout),
             "--annotations",
             annotations_file,
+            "--compatible_with",
+            ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with]),
         ]
 
         args += ["--python_interpreter", _get_python_interpreter_attr(rctx)]
@@ -219,10 +221,10 @@ def _pip_repository_impl(rctx):
             "python.pip_install.extract_wheels.extract_wheels",
             "--requirements",
             rctx.path(rctx.attr.requirements),
-            "--compatible_with",
-            ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with]),
             "--annotations",
             annotations_file,
+            "--compatible_with",
+            ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with]),
         ]
         progress_message = "Extracting wheels"
 
@@ -431,6 +433,11 @@ def _whl_library_impl(rctx):
         args.extend([
             "--annotation",
             rctx.path(rctx.attr.annotation),
+        ])
+    if rctx.attr.compatible_with:
+        args.extend([
+            "--compatible_with",
+	    ','.join(['"{l}"'.format(l=l) for l in rctx.attr.compatible_with])
         ])
 
     args = _parse_optional_attrs(rctx, args)

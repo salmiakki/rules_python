@@ -26,6 +26,12 @@ def main() -> None:
         type=annotation_from_str_path,
         help="A json encoded file containing annotations for rendered packages.",
     )
+    parser.add_argument(
+        "--compatible_with",
+        action="store",
+        required=False,
+        help="List targets for which reqirements are compatible with",
+    )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
     deserialized_args = dict(vars(args))
@@ -74,6 +80,7 @@ def main() -> None:
         incremental=True,
         repo_prefix=args.repo_prefix,
         annotation=args.annotation,
+        compatible_with=args.compatible_with or "",
     )
 
 

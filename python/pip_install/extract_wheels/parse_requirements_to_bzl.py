@@ -81,7 +81,7 @@ def parse_whl_library_args(args: argparse.Namespace) -> Dict[str, Any]:
     whl_library_args.setdefault("python_interpreter", sys.executable)
 
     # These arguments are not used by `whl_library`
-    for arg in ("requirements_lock", "requirements_lock_label", "annotations"):
+    for arg in ("requirements_lock", "requirements_lock_label", "annotations", "compatible_with"):
         if arg in whl_library_args:
             whl_library_args.pop(arg)
 
@@ -93,6 +93,7 @@ def generate_parsed_requirements_contents(
     repo_prefix: str,
     whl_library_args: Dict[str, Any],
     annotations: Dict[str, str] = dict(),
+    compatible_with: str = "",
 ) -> str:
     """
     Parse each requirement from the requirements_lock file, and prepare arguments for each
@@ -131,6 +132,7 @@ def generate_parsed_requirements_contents(
         _packages = {repo_names_and_reqs}
         _config = {args}
         _annotations = {annotations}
+        _compatible_with = [{compatible_with}]
 
         def _clean_name(name):
             return name.replace("-", "_").replace(".", "_").lower()
@@ -164,6 +166,7 @@ def generate_parsed_requirements_contents(
                     name = name,
                     requirement = requirement,
                     annotation = _get_annotation(requirement),
+                    compatible_with = _compatible_with,
                     **_config
                 )
         """.format(
@@ -178,6 +181,7 @@ def generate_parsed_requirements_contents(
             repo_names_and_reqs=repo_names_and_reqs,
             repo_prefix=repo_prefix,
             wheel_file_label=bazel.WHEEL_FILE_LABEL,
+            compatible_with=compatible_with,
         )
     )
 
@@ -234,6 +238,12 @@ If set, it will take precedence over python_interpreter.",
         type=annotation.annotations_map_from_str_path,
         help="A json encoded file containing annotations for rendered packages.",
     )
+    parser.add_argument(
+        "--compatible_with",
+        action="store",
+        required=False,
+        help="List targets for which reqirements are compatible with",
+    )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
 
@@ -273,6 +283,7 @@ If set, it will take precedence over python_interpreter.",
             repo_prefix=args.repo_prefix,
             whl_library_args=whl_library_args,
             annotations=annotated_requirements,
+            compatible_with=args.compatible_with,
         )
     )
 
