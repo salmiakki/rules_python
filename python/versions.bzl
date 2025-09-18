@@ -102,6 +102,22 @@ TOOL_VERSIONS = {
         },
         "strip_prefix": "python",
     },
+    "3.12.11": {
+        "url": "20250808/cpython-{python_version}+20250808-{platform}-{build}.tar.gz",
+        "sha256": {
+            "aarch64-apple-darwin": "8792c4a84c364ab975feca0c27d3157a5435b7baab325a346ae56b223893b661",
+            "aarch64-unknown-linux-gnu": "4d7ba5314fab02130d6538f074961ffbf61310cade9180e59026074f9a8939cb",
+            "aarch64-pc-windows-msvc": "00bf7d7e8bcf5d1e9c4dfca0247d8e035147777cd57ee9d4c64dedca86b0a464",
+            "ppc64le-unknown-linux-gnu": "2c862eb40a81549d9c11e6bf5a7f07c3406310b14e6a4d16dcdf1c4763ef7090",
+            "riscv64-unknown-linux-gnu": "0bb729b95fabd49c7b495f7c44a9086e3970ea57daf66365741574bd36a17e81",
+            "s390x-unknown-linux-gnu": "99e465882d217d24ac90e99fac8f32e6a644d0340ac05ee510fb5cdf53f0cfb8",
+            "x86_64-apple-darwin": "e0c932709dafb05f00e528a7560ef8ee559ac82b75faca60dd1245bca1c1553f",
+            "x86_64-pc-windows-msvc": "81214ef71964a40ec269a79067ca490d45298c350583bc3af0e5781451a05c3c",
+            "x86_64-unknown-linux-gnu": "63d78840bf209af8da8f24e335d910f88387b892ca9187be571d481c071751bb",
+            "x86_64-unknown-linux-musl": "d633d070780590aa03ac5575cd9d7b9e17682d80f14b400313c009c387cf706b",
+        },
+        "strip_prefix": "python",
+    },
 }
 
 # buildifier: disable=unsorted-dict-items
@@ -109,6 +125,7 @@ MINOR_MAPPING = {
     "3.8": "3.8.13",
     "3.9": "3.9.12",
     "3.10": "3.10.4",
+    "3.11": "3.11.11",
 }
 
 PLATFORMS = {
